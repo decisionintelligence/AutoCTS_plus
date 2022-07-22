@@ -13,10 +13,9 @@ from pathlib import Path
 from itertools import combinations
 from functools import cmp_to_key
 
-from joint_nac_engine2 import NAC, train_baseline_epoch, evaluate
-from clean_set.genotypes import PRIMITIVES
-# from utils import to_device2
-from noisy_set.utils import joint_NAC_DataLoader
+from joint_engine import NAC, train_baseline_epoch, evaluate
+from genotypes import PRIMITIVES
+from utils import joint_NAC_DataLoader
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,7 +31,7 @@ def load_clean_set(root, epoch):
     # epoch1:100
     clean_set = []
     for i in range(1, 3):
-        dir = root + '08/clean_joint3/' + f'clean{i}.json'
+        dir = root + f'clean{i}.json'
 
         with open(dir, "r") as f:
             arch_pairs = json.load(f)
@@ -64,13 +63,13 @@ def load_noisy_set(root):
     #         noisy_set.append((arch, hyper, mae))
 
     for i in range(1, 6):
-        dir = root + '08/clean_joint3/' + f'noisy{i}.json'
+        dir = root + f'noisy{i}.json'
         with open(dir, "r") as f:
             arch_pairs = json.load(f)
         for arch_pair in arch_pairs:
             arch = arch_pair['arch']
             hyper = arch_pair['hyper']
-            info = arch_pair['info'][0]
+            info = arch_pair['info'][-1]
             mae = info[0]
             if mae < 120:
                 noisy_set.append((arch, hyper, mae))
@@ -83,7 +82,7 @@ def load_noisy_set(root):
 
 def load_pred_set(root):
     pred_set = []
-    dir = root + '08/clean_joint3/' + f'pred.json'
+    dir = root + f'pred.json'
 
     with open(dir, "r") as f:
         arch_pairs = json.load(f)
@@ -121,10 +120,11 @@ def main():
     if args.cuda:
         torch.backends.cudnn.deterministic = True
 
-    # 加载clean set和noisy set
-    clean_data_dir = 'clean_set/'
+    # load clean set and noisy set
+    clean_data_dir = 'clean_seed/'
+    noisy_data_dir = 'noisy_seed/'
     clean_set = load_clean_set(clean_data_dir, 99)
-    noisy_set = load_noisy_set(clean_data_dir)
+    noisy_set = load_noisy_set(noisy_data_dir)
     # clean_set = sorted(clean_set, key=lambda x: x[-1])
     for pair in clean_set:
         print(pair)
@@ -147,7 +147,7 @@ def main():
     #                 num[i][j] += 1
     # print(num)
 
-    # 分割clean数据集
+    # split clean samples
     valid_set = []
     new_clean_set = []
     for i, (arch, hyper, mae) in enumerate(clean_set):
@@ -198,7 +198,6 @@ def main():
     noisy_pairs = generate_pairs(noisy_set)
     remain_pairs = generate_pairs(new_clean_set)
     train_pairs = generate_pairs(train_set)
-    # print(valid_pairs[:10])
 
     valid_loader = joint_NAC_DataLoader(valid_pairs, 1)
     noisy_loader = joint_NAC_DataLoader(noisy_pairs, args.batch_size)
@@ -212,7 +211,7 @@ def main():
 
     his_loss = 100.
     tolerance = 0
-    for epoch in range(100):  # 训练NAC多少个epochs？好像只能凭经验，因为没有test set
+    for epoch in range(10):
         valid_acc, loss = train_baseline_epoch(epoch,
                                                noisy_loader,
                                                valid_loader,
@@ -222,17 +221,17 @@ def main():
         if loss < his_loss:
             tolerance = 0
             his_loss = loss
-            torch.save(nac.state_dict(), "./saved_model/nac2" + ".pth")
+            torch.save(nac.state_dict(), "./saved_model/nac" + ".pth")
         else:
             tolerance += 1
-        if tolerance >= 5:
+        if tolerance >= 3:
             break
 
     print('===================================================')
-    nac.load_state_dict(torch.load("./saved_model/nac2" + ".pth"))
+    nac.load_state_dict(torch.load("./saved_model/nac" + ".pth"))
     his_loss = 100.
     tolerance = 0
-    for epoch in range(100):
+    for epoch in range(10):
         valid_acc, loss = train_baseline_epoch(epoch,
                                                train_loader,
                                                valid_loader,
@@ -242,17 +241,40 @@ def main():
         if loss < his_loss:
             tolerance = 0
             his_loss = loss
-            torch.save(nac.state_dict(), "./saved_model/nac2" + ".pth")
+            torch.save(nac.state_dict(), "./saved_model/nac" + ".pth")
         else:
             tolerance += 1
-        if tolerance >= 5:
+        if tolerance >= 3:
             break
 
     print('===================================================')
-    nac.load_state_dict(torch.load("./saved_model/nac2" + ".pth"))
+    nac.load_state_dict(torch.load("./saved_model/nac" + ".pth"))
 
-    # random sample and eval
+    def compare(arch_hyper0, arch_hyper1):
+        arch0, hyper0 = arch_hyper0
+        arch1, hyper1 = arch_hyper1
+        arch0 = [arch0]
+        arch1 = [arch1]
+        hyper0 = [hyper0]
+        hyper1 = [hyper1]
+        with torch.no_grad():
+            nac.eval()
+            outputs = nac(arch0, hyper0, arch1, hyper1)
+            pred = torch.round(outputs)
+        if pred == 0:
+            return -1
+        else:
+            return 1
 
+    # ranking
+    arch_hyper_set = load_pred_set(clean_data_dir)
+    print(len(arch_hyper_set))
+    print(arch_hyper_set[0])
+    t1 = time.time()
+    sorted_archs = sorted(arch_hyper_set, key=cmp_to_key(compare))
+    print(f'pred time: {time.time() - t1}')
+    print(sorted_archs[:10])  # top-10
+    print(sorted_archs[-1])
 
 
 if __name__ == '__main__':

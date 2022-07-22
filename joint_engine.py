@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.optim.sgd import SGD
 
 from gcn_net import GCN
-from clean_set.genotypes import PRIMITIVES
+from genotypes import PRIMITIVES
 # from utils import to_device, shuffle
 # from metric import AccuracyMetric, AverageMetric
 
@@ -188,12 +188,11 @@ class NAC(nn.Module):
         self.fc = nn.Linear(embedding_dim * ratio, 1, bias=True).to(DEVICE)  # f_out=1  ratio是啥意思？
 
     def forward(self, arch0, hyper0, arch1, hyper1):
-        # 先将数组编码改成邻接矩阵编码
         # arch0.shape = [batch_size, 11, 2]
 
         b_adj0, b_adj1, b_ops0, b_ops1, b_hyper0, b_hyper1 = [], [], [], [], [], []
         for i in range(len(arch0)):
-            if hyper0[i][1] == 4:  # cell内4个node
+            if hyper0[i][1] == 4:
                 adj0, ops0 = geno_to_adj_pad(arch0[i][:-4])
             else:
                 adj0, ops0 = geno_to_adj(arch0[i])

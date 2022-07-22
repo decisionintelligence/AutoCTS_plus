@@ -15,10 +15,14 @@ Download the data [STSGCN_data.tar.gz](https://pan.baidu.com/s/1ZPIiOM__r1TRlmY4
 
 
 ## Architecture Search
+#### search for the best arch-hyper on the PEMS08 dataset
 ```
+mkdir saved_model
 CUDA_VISIBLE_DEVICES=0 python3.6 joint_search.py
 ```
 ## Architecture test
+#### test the arch-hyper searched on the PEMS08 dataset
 ```
-CUDA_VISIBLE_DEVICES=0 python3.6 train_search.py
+cd test
+CUDA_VISIBLE_DEVICES=0 python3.6 joint_test.py
 ```
